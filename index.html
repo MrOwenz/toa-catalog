@@ -125,6 +125,21 @@
   .doc-preview.open{display:block}
   .doc-preview img{max-width:100%;border-radius:8px}
   .doc-preview video, .doc-preview iframe{width:100%;aspect-ratio:16/9;border:0;border-radius:8px}
+
+  /* ---- System (ระบบ) view ---- */
+  .sys-desc{font-size:.82rem;color:var(--muted);line-height:1.5;white-space:pre-line}
+  .sys-meta{font-size:.78rem;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap;margin-top:2px}
+  .sys-section-title{font-size:.95rem;font-weight:800;color:var(--primary-text);margin:18px 0 8px;padding-top:14px;border-top:1px solid var(--border)}
+  .sys-section-title:first-of-type{margin-top:6px}
+  .stc-block{border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+  .stc-block .stc-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+  .stc-block .stc-label{font-weight:700;font-size:.85rem}
+  .stc-block .stc-value{font-weight:800;font-size:1rem;color:var(--accent-text);white-space:nowrap}
+  .fire-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media (max-width:480px){.fire-grid{grid-template-columns:1fr}}
+  .fire-card{border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+  .fire-card .fl{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+  .fire-card .fv{font-size:.92rem;font-weight:700;margin-top:3px;white-space:pre-line}
 </style>
 </head>
 <body>
@@ -208,9 +223,13 @@ const GROUP_IMAGES = {
 };
 
 let allProducts = [];
+let allSystemItems = [];
+let dataMode = 'product'; // 'product' | 'system'
 let activeCat = "ทั้งหมด";
 let pollTimer = null;
 let currentSheet = null;
+
+function currentItems(){ return dataMode === 'system' ? allSystemItems : allProducts; }
 
 const CAT_ICONS = ['📋','🧱','🛡️','🔥','💧','🏗️','🔧','📐','🪵','🎨','⚙️','🏠'];
 function iconFor(name){
@@ -420,9 +439,77 @@ function buildProducts(rows, sheetName){
   return out;
 }
 
+/* ---------- SYSTEM SHEET PARSER ---------- */
+// ชีท "System" มีโครงสร้างต่างจากชีทสินค้าทั่วไป: แถวหัวข้อกลุ่มคั่นเป็นช่วงๆ (merge เต็มแถว)
+// ตามด้วยหัวตารางกลุ่ม (ค่าการกันเสียง (STC) x3) และหัวตารางคอลัมน์จริง (ลำดับที่/ระบบ/ส่วนประกอบ...)
+// ฟังก์ชันนี้คืนค่า null ถ้าชีทที่ดึงมาไม่ใช่โครงสร้างแบบ System (ให้ไปใช้ buildProducts ตามปกติ)
+function buildSystemItems(rows){
+  let headerRowIdx = -1;
+  for(let r=0; r<Math.min(rows.length,8); r++){
+    if(rows[r].some(c => (c||'').trim() === 'ลำดับที่')){ headerRowIdx = r; break; }
+  }
+  if(headerRowIdx === -1) return null;
+
+  const headers = rows[headerRowIdx].map(h => h.trim());
+  const find = (re) => headers.findIndex(h => re.test(h));
+  const nameIdx     = headers.findIndex(h => h === 'ระบบ');
+  const compIdx     = find(/ส่วนประกอบ/);
+  const thickIdx    = find(/ความหนา/);
+  const heightIdx   = headers.findIndex(h => h === 'แนะนำ');
+  const fireRecIdx  = find(/ที่แนะนำ/);
+  const fireTestIdx = find(/ผลทดสอบ|อิงผล/);
+  if(nameIdx === -1) return null;
+
+  // แต่ละกลุ่ม "ค่าการกันเสียง (STC)" จะมีหัวคอลัมน์เป็นชนิดฉนวน (มีคำว่า "ฉนวน") ตามด้วย Report แล้ว System
+  const stcGroupsDef = headers
+    .map((h,i) => /ฉนวน/.test(h) ? {idx:i, label:h} : null)
+    .filter(Boolean);
+
+  // หัวข้อหมวดใหญ่ (เช่น "ระบบผนัง Dry Wall TOA") มักอยู่เหนือแถวหัวตาราง จึงต้องดักจับไว้ก่อนเริ่มลูปข้อมูล
+  let currentCategory = '';
+  for(let r = 0; r < headerRowIdx; r++){
+    const t = (rows[r] && rows[r][0] || '').trim();
+    if(t) currentCategory = t;
+  }
+
+  const items = [];
+  for(let r = headerRowIdx + 1; r < rows.length; r++){
+    const row = rows[r];
+    if(!row || row.every(c => !c || !c.trim())) continue;
+    if((row[0]||'').trim() === 'ลำดับที่') continue; // หัวตารางซ้ำ (บางชีทจัดวางหัวซ้ำทุกช่วง)
+
+    const nameVal = (row[nameIdx]||'').trim();
+    if(!nameVal){
+      const t = (row[0]||'').trim();
+      if(t) currentCategory = t; // แถวหัวข้อกลุ่มใหม่ (merge เต็มแถว เช่น "ระบบผนัง Dry Wall TOA")
+      continue;
+    }
+    if(nameVal === 'ระบบ') continue; // กันหัวตารางซ้ำกรณี nameIdx ตรงกับคำว่า "ระบบ" เป๊ะ
+
+    const stcGroups = stcGroupsDef.map(g => ({
+      label: g.label.trim(),
+      value: (row[g.idx]||'').trim(),
+      report: (row[g.idx+1]||'').trim(),
+      system: (row[g.idx+2]||'').trim()
+    }));
+
+    items.push({
+      category: currentCategory || 'ระบบ',
+      name: nameVal,
+      components: compIdx  > -1 ? (row[compIdx]||'').trim()  : '',
+      thickness:  thickIdx > -1 ? (row[thickIdx]||'').trim() : '',
+      heightRec:  heightIdx> -1 ? (row[heightIdx]||'').trim(): '',
+      fireRec:    fireRecIdx > -1 ? (row[fireRecIdx]||'').trim()  : '',
+      fireTest:   fireTestIdx> -1 ? (row[fireTestIdx]||'').trim() : '',
+      stcGroups
+    });
+  }
+  return items;
+}
+
 /* ---------- RENDER (catalog view) ---------- */
 function renderCats(){
-  const cats = ['ทั้งหมด', ...Array.from(new Set(allProducts.map(p=>p.category)))];
+  const cats = ['ทั้งหมด', ...Array.from(new Set(currentItems().map(p=>p.category)))];
   const box = document.getElementById('cats');
   box.innerHTML = '';
   cats.forEach(c=>{
@@ -438,40 +525,105 @@ function render(){
   renderCats();
   const q = document.getElementById('search').value.trim().toLowerCase();
   const grid = document.getElementById('grid');
-  const filtered = allProducts.filter(p=>{
+  const filtered = currentItems().filter(p=>{
     const matchCat = activeCat==='ทั้งหมด' || p.category===activeCat;
-    const matchQ = !q || (p.name+' '+p.size).toLowerCase().includes(q);
+    const haystack = dataMode === 'system' ? (p.name+' '+p.components) : (p.name+' '+p.size);
+    const matchQ = !q || haystack.toLowerCase().includes(q);
     return matchCat && matchQ;
   });
   grid.innerHTML = '';
   if(!filtered.length){
-    grid.innerHTML = '<div class="empty">ไม่พบสินค้าที่ตรงกับเงื่อนไข</div>';
+    grid.innerHTML = '<div class="empty">ไม่พบรายการที่ตรงกับเงื่อนไข</div>';
     return;
   }
-  filtered.forEach(p=>{
-    const card = document.createElement('div');
-    card.className = 'card';
-    const edgeTxt = p.edges.filter(e=>e.on).map(e=>e.label).join(' • ');
-    const thumbHtml = p.image
-      ? `<img src="${p.image}" alt="${p.name}" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<span class=ph>${iconFor(p.category)}</span>'">`
-      : `<span class="ph">${iconFor(p.category)}</span>`;
-    card.innerHTML = `
-      <div class="thumb">${thumbHtml}</div>
-      <div class="body">
-        <div class="cat-tag">${p.category}</div>
-        <h3>${p.name}</h3>
-        <div class="size">📐 ${p.size || '-'}</div>
-        ${edgeTxt ? `<div class="edge-row">✔️ ${edgeTxt}</div>` : ''}
-        <div class="badges">${p.docs.map(d => isUrl(d.val)
-            ? `<a class="badge link" href="${d.val}" target="_blank" rel="noopener">📎 ${d.label}</a>`
-            : `<span class="badge" title="${d.val}">${d.label}</span>`
-          ).join('') || '<span class="badge" style="opacity:.5">ไม่มีเอกสารแนบ</span>'}</div>
+  filtered.forEach(p => grid.appendChild(dataMode === 'system' ? buildSystemCard(p) : buildProductCard(p)));
+}
+
+function buildProductCard(p){
+  const card = document.createElement('div');
+  card.className = 'card';
+  const edgeTxt = p.edges.filter(e=>e.on).map(e=>e.label).join(' • ');
+  const thumbHtml = p.image
+    ? `<img src="${p.image}" alt="${p.name}" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<span class=ph>${iconFor(p.category)}</span>'">`
+    : `<span class="ph">${iconFor(p.category)}</span>`;
+  card.innerHTML = `
+    <div class="thumb">${thumbHtml}</div>
+    <div class="body">
+      <div class="cat-tag">${p.category}</div>
+      <h3>${p.name}</h3>
+      <div class="size">📐 ${p.size || '-'}</div>
+      ${edgeTxt ? `<div class="edge-row">✔️ ${edgeTxt}</div>` : ''}
+      <div class="badges">${p.docs.map(d => isUrl(d.val)
+          ? `<a class="badge link" href="${d.val}" target="_blank" rel="noopener">📎 ${d.label}</a>`
+          : `<span class="badge" title="${d.val}">${d.label}</span>`
+        ).join('') || '<span class="badge" style="opacity:.5">ไม่มีเอกสารแนบ</span>'}</div>
+    </div>
+  `;
+  card.querySelectorAll('a.badge.link').forEach(a => a.addEventListener('click', e => e.stopPropagation()));
+  card.addEventListener('click', () => openModal(p));
+  return card;
+}
+
+function buildSystemCard(it){
+  const card = document.createElement('div');
+  card.className = 'card';
+  const descParts = [];
+  if(it.components) descParts.push(it.components.replace(/\n+/g, ' / '));
+  if(it.thickness)  descParts.push('หนา ' + it.thickness + ' มม.');
+  if(it.heightRec)  descParts.push('สูงแนะนำ ' + it.heightRec + ' ม.');
+  card.innerHTML = `
+    <div class="thumb"><span class="ph">${iconFor(it.category)}</span></div>
+    <div class="body">
+      <div class="cat-tag">${it.category}</div>
+      <h3>${it.name}</h3>
+      <div class="sys-desc">${descParts.join(' · ')}</div>
+    </div>
+  `;
+  card.addEventListener('click', () => openSystemModal(it));
+  return card;
+}
+
+function openSystemModal(it){
+  const descParts = [];
+  if(it.components) descParts.push(it.components.replace(/\n+/g, ' / '));
+  if(it.thickness)  descParts.push('หนา ' + it.thickness + ' มม.');
+  if(it.heightRec)  descParts.push('สูงแนะนำ ' + it.heightRec + ' ม.');
+
+  let idx = 0;
+  const stcHtml = it.stcGroups.map(g => `
+    <div class="stc-block">
+      <div class="stc-head">
+        <div class="stc-label">${g.label}</div>
+        ${g.value ? `<div class="stc-value">${g.value} dB</div>` : '<div class="stc-value" style="color:var(--muted);font-weight:500;">ไม่มีข้อมูล</div>'}
       </div>
-    `;
-    card.querySelectorAll('a.badge.link').forEach(a => a.addEventListener('click', e => e.stopPropagation()));
-    card.addEventListener('click', () => openModal(p));
-    grid.appendChild(card);
-  });
+      <div class="doc-list" style="margin-top:0;border-top:none;padding-top:0;">
+        ${docRowHtml({label:'Report', val:g.report}, idx++)}
+        ${docRowHtml({label:'System', val:g.system}, idx++)}
+      </div>
+    </div>
+  `).join('');
+
+  const hasFire = it.fireRec || it.fireTest;
+
+  document.getElementById('modalContent').innerHTML = `
+    <div class="modal-hero"><span class="ph">${iconFor(it.category)}</span></div>
+    <div class="modal-body">
+      <span class="cat-tag">${it.category}</span>
+      <h2>${it.name}</h2>
+      ${descParts.length ? `<div class="sys-desc">${descParts.join(' · ')}</div>` : ''}
+
+      <div class="sys-section-title">🔊 ค่าการกันเสียง (STC)</div>
+      ${stcHtml || '<div class="sys-desc">ไม่มีข้อมูล</div>'}
+
+      ${hasFire ? `
+      <div class="sys-section-title">🔥 การทนไฟ (hr:min)</div>
+      <div class="fire-grid">
+        <div class="fire-card"><div class="fl">เวลาที่แนะนำ</div><div class="fv">${it.fireRec || '-'}</div></div>
+        <div class="fire-card"><div class="fl">การทนไฟ (อิงผลทดสอบ)</div><div class="fv">${it.fireTest || '-'}</div></div>
+      </div>` : ''}
+    </div>
+  `;
+  document.getElementById('overlay').classList.add('open');
 }
 
 /* ---------- PRODUCT DETAIL MODAL ---------- */
@@ -535,11 +687,21 @@ async function loadData(){
   try{
     const {text, source} = await fetchCsvText(sheetName);
     const rows = parseCSV(text);
-    allProducts = buildProducts(rows, sheetName);
+
+    // ชีท System มีโครงสร้างพิเศษ (กลุ่ม STC / การทนไฟ) ต่างจากชีทสินค้าทั่วไป
+    const systemItems = buildSystemItems(rows);
+    if(systemItems){
+      dataMode = 'system';
+      allSystemItems = systemItems;
+    } else {
+      dataMode = 'product';
+      allProducts = buildProducts(rows, sheetName);
+    }
+
     const now = new Date();
     const t = 'อัปเดตล่าสุด ' + now.toLocaleTimeString('th-TH');
     document.getElementById('topSync').textContent = t;
-    status.textContent = `พบสินค้า ${allProducts.length} รายการ ในกลุ่ม "${sheetName}" (แหล่งข้อมูล: ${source})`;
+    status.textContent = `พบ ${currentItems().length} รายการ ในกลุ่ม "${sheetName}" (แหล่งข้อมูล: ${source})`;
     activeCat = 'ทั้งหมด';
     render();
   }catch(e){
