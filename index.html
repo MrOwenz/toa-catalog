@@ -459,15 +459,29 @@ function buildSystemItems(rows){
   const fireRecIdx  = find(/ที่แนะนำ/);
   const fireTestIdx = find(/ผลทดสอบ|อิงผล/);
   if(nameIdx === -1) nameIdx = 1; // เผื่อหัวคอลัมน์สะกดไม่ตรงเป๊ะ ให้ถือว่าคอลัมน์ถัดจาก "ลำดับที่" คือชื่อระบบ
+  console.log('[System parser] headerRowIdx =', headerRowIdx, 'headers =', headers);
 
-  // หาแต่ละกลุ่ม "ค่าการกันเสียง (STC)" จากรูปแบบ: (ค่า) -> Report -> System เรียงติดกัน
-  // ใช้คำว่า Report/System (ภาษาอังกฤษล้วน) อ้างอิงแทนข้อความไทย เพื่อกันปัญหาอักขระแฝง/การสะกดที่ไม่ตรงเป๊ะ
+  // หาแต่ละกลุ่ม "ค่าการกันเสียง (STC)" จากคอลัมน์ Report/System (ภาษาอังกฤษล้วน กันปัญหาสะกดไทยไม่ตรง)
+  // เผื่อมีคอลัมน์ว่างแฝง (hidden spacer column) คั่นอยู่ จึงไม่ยึดตำแหน่งติดกันเป๊ะ แต่ไล่หาแบบยืดหยุ่น:
+  //   1) หา "Report" ทุกตำแหน่ง
+  //   2) มองไปข้างหน้าไม่เกิน 3 ช่องเพื่อหา "System" ที่คู่กัน
+  //   3) ไล่ย้อนกลับจาก Report หาคอลัมน์ค่า (ชื่อกลุ่ม) ตัวที่ใกล้สุดที่ไม่ว่าง
   const stcGroupsDef = [];
-  for(let i=0;i<headers.length-2;i++){
-    if(/^report$/i.test((headers[i+1]||'').trim()) && /^system$/i.test((headers[i+2]||'').trim())){
-      stcGroupsDef.push({idx:i, label:(headers[i]||'').trim() || 'ค่าการกันเสียง (STC)'});
+  for(let i=0;i<headers.length;i++){
+    if(!/^report$/i.test((headers[i]||'').trim())) continue;
+    let systemCol = -1;
+    for(let k=i+1;k<Math.min(i+4,headers.length);k++){
+      if(/^system$/i.test((headers[k]||'').trim())){ systemCol = k; break; }
     }
+    if(systemCol === -1) continue;
+    let valueCol = -1;
+    for(let k=i-1;k>=Math.max(0,i-4);k--){
+      if((headers[k]||'').trim()){ valueCol = k; break; }
+    }
+    if(valueCol === -1) continue;
+    stcGroupsDef.push({idx:valueCol, reportCol:i, systemCol, label:(headers[valueCol]||'').trim() || 'ค่าการกันเสียง (STC)'});
   }
+  console.log('[System parser] stcGroupsDef =', stcGroupsDef);
 
   // หัวข้อหมวดใหญ่ (เช่น "ระบบผนัง Dry Wall TOA") มักอยู่เหนือแถวหัวตาราง จึงต้องดักจับไว้ก่อนเริ่มลูปข้อมูล
   let currentCategory = '';
@@ -493,8 +507,8 @@ function buildSystemItems(rows){
     const stcGroups = stcGroupsDef.map(g => ({
       label: g.label.trim(),
       value: (row[g.idx]||'').trim(),
-      report: (row[g.idx+1]||'').trim(),
-      system: (row[g.idx+2]||'').trim()
+      report: (row[g.reportCol]||'').trim(),
+      system: (row[g.systemCol]||'').trim()
     }));
 
     items.push({
