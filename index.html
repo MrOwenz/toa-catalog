@@ -450,7 +450,22 @@ function buildSystemItems(rows){
   }
   if(headerRowIdx === -1) return null;
 
-  const headers = rows[headerRowIdx].map(h => h.trim());
+  // หัวตารางบางชีทแยกเป็นหลายแถว: แถวบนสุดเป็นชื่อกลุ่ม (เช่น "ค่าการกันเสียง (STC)"),
+  // ตามด้วยแถวย่อยจริง (เช่น "ไม่ใส่ฉนวน"/"Report"/"System") ซึ่งอาจมีแถวว่างคั่นอยู่ระหว่างกลางด้วย
+  // จึงไล่มองลึกลงไปทีละแถว (ข้ามแถวว่างได้) รวมข้อความที่เจอเข้ากับหัวตารางหลัก
+  // จนกว่าจะเจอแถวข้อมูลจริง (คอลัมน์แรกเป็นตัวเลขล้วน เช่น "1","2","10.1") จึงหยุด
+  const headers = rows[headerRowIdx].map(h => (h||'').trim());
+  let headerRowsUsed = 1;
+  for(let d=1; d<=4; d++){
+    const r = rows[headerRowIdx+d];
+    if(!r) break;
+    if(/^\d+(\.\d+)?$/.test((r[0]||'').trim())) break; // เจอแถวข้อมูลจริงแล้ว หยุดไม่ถือเป็นหัวตาราง
+    for(let i=0;i<Math.max(headers.length, r.length);i++){
+      const v = (r[i]||'').trim();
+      if(v) headers[i] = v;
+    }
+    headerRowsUsed = d+1;
+  }
   const find = (re) => headers.findIndex(h => re.test(h));
   let nameIdx     = headers.findIndex(h => h.trim() === 'ระบบ');
   const compIdx     = find(/ส่วนประกอบ/);
@@ -491,7 +506,7 @@ function buildSystemItems(rows){
   }
 
   const items = [];
-  for(let r = headerRowIdx + 1; r < rows.length; r++){
+  for(let r = headerRowIdx + headerRowsUsed; r < rows.length; r++){
     const row = rows[r];
     if(!row || row.every(c => !c || !c.trim())) continue;
     if((row[0]||'').trim() === 'ลำดับที่') continue; // หัวตารางซ้ำ (บางชีทจัดวางหัวซ้ำทุกช่วง)
