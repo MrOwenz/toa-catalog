@@ -452,18 +452,22 @@ function buildSystemItems(rows){
 
   const headers = rows[headerRowIdx].map(h => h.trim());
   const find = (re) => headers.findIndex(h => re.test(h));
-  const nameIdx     = headers.findIndex(h => h === 'ระบบ');
+  let nameIdx     = headers.findIndex(h => h.trim() === 'ระบบ');
   const compIdx     = find(/ส่วนประกอบ/);
   const thickIdx    = find(/ความหนา/);
-  const heightIdx   = headers.findIndex(h => h === 'แนะนำ');
+  const heightIdx   = headers.findIndex(h => h.trim() === 'แนะนำ');
   const fireRecIdx  = find(/ที่แนะนำ/);
   const fireTestIdx = find(/ผลทดสอบ|อิงผล/);
-  if(nameIdx === -1) return null;
+  if(nameIdx === -1) nameIdx = 1; // เผื่อหัวคอลัมน์สะกดไม่ตรงเป๊ะ ให้ถือว่าคอลัมน์ถัดจาก "ลำดับที่" คือชื่อระบบ
 
-  // แต่ละกลุ่ม "ค่าการกันเสียง (STC)" จะมีหัวคอลัมน์เป็นชนิดฉนวน (มีคำว่า "ฉนวน") ตามด้วย Report แล้ว System
-  const stcGroupsDef = headers
-    .map((h,i) => /ฉนวน/.test(h) ? {idx:i, label:h} : null)
-    .filter(Boolean);
+  // หาแต่ละกลุ่ม "ค่าการกันเสียง (STC)" จากรูปแบบ: (ค่า) -> Report -> System เรียงติดกัน
+  // ใช้คำว่า Report/System (ภาษาอังกฤษล้วน) อ้างอิงแทนข้อความไทย เพื่อกันปัญหาอักขระแฝง/การสะกดที่ไม่ตรงเป๊ะ
+  const stcGroupsDef = [];
+  for(let i=0;i<headers.length-2;i++){
+    if(/^report$/i.test((headers[i+1]||'').trim()) && /^system$/i.test((headers[i+2]||'').trim())){
+      stcGroupsDef.push({idx:i, label:(headers[i]||'').trim() || 'ค่าการกันเสียง (STC)'});
+    }
+  }
 
   // หัวข้อหมวดใหญ่ (เช่น "ระบบผนัง Dry Wall TOA") มักอยู่เหนือแถวหัวตาราง จึงต้องดักจับไว้ก่อนเริ่มลูปข้อมูล
   let currentCategory = '';
