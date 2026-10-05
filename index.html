@@ -473,6 +473,7 @@ function buildSystemItems(rows){
   const heightIdx   = headers.findIndex(h => h.trim() === 'แนะนำ');
   const fireRecIdx  = find(/ที่แนะนำ/);
   const fireTestIdx = find(/ผลทดสอบ|อิงผล/);
+  const ceilingIdx  = headers.findIndex((h,i) => i > fireTestIdx && /ฝ้าเพดาน/.test(h));
   if(nameIdx === -1) nameIdx = 1; // เผื่อหัวคอลัมน์สะกดไม่ตรงเป๊ะ ให้ถือว่าคอลัมน์ถัดจาก "ลำดับที่" คือชื่อระบบ
   console.log('[System parser] headerRowIdx =', headerRowIdx, 'headers =', headers);
 
@@ -534,6 +535,8 @@ function buildSystemItems(rows){
       heightRec:  heightIdx> -1 ? (row[heightIdx]||'').trim(): '',
       fireRec:    fireRecIdx > -1 ? (row[fireRecIdx]||'').trim()  : '',
       fireTest:   fireTestIdx> -1 ? (row[fireTestIdx]||'').trim() : '',
+      ceilingLabel: ceilingIdx > -1 ? (headers[ceilingIdx]||'').trim() : 'ระบบฝ้าเพดาน',
+      ceiling:    ceilingIdx > -1 ? (row[ceilingIdx]||'').trim() : '',
       stcGroups
     });
   }
@@ -637,6 +640,9 @@ function openSystemModal(it){
   `).join('');
 
   const hasFire = it.fireRec || it.fireTest;
+  const ceilingHtml = it.ceiling
+    ? `<div class="doc-list" style="margin-top:0;">${docRowHtml({label:it.ceilingLabel || 'ผลทดสอบ', val:it.ceiling}, idx++)}</div>`
+    : '<div class="sys-desc">ไม่มีข้อมูล</div>';
 
   document.getElementById('modalContent').innerHTML = `
     <div class="modal-hero"><span class="ph">${iconFor(it.category)}</span></div>
@@ -654,6 +660,9 @@ function openSystemModal(it){
         <div class="fire-card"><div class="fl">เวลาที่แนะนำ</div><div class="fv">${it.fireRec || '-'}</div></div>
         <div class="fire-card"><div class="fl">การทนไฟ (อิงผลทดสอบ)</div><div class="fv">${it.fireTest || '-'}</div></div>
       </div>` : ''}
+
+      <div class="sys-section-title">🏠 ระบบฝ้าเพดาน</div>
+      ${ceilingHtml}
     </div>
   `;
   document.getElementById('overlay').classList.add('open');
