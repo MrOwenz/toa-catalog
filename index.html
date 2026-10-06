@@ -473,8 +473,9 @@ function buildSystemItems(rows){
   const heightIdx   = headers.findIndex(h => h.trim() === 'แนะนำ');
   const fireRecIdx  = find(/ที่แนะนำ/);
   const fireTestIdx = find(/ผลทดสอบ|อิงผล/);
-  const ceilingIdx  = headers.findIndex((h,i) => i > fireTestIdx && /ฝ้าเพดาน/.test(h));
-  console.log('[System parser] fireTestIdx=', fireTestIdx, 'ceilingIdx=', ceilingIdx, 'ceilingHeader=', headers[ceilingIdx]);
+  let ceilingIdx = headers.findIndex(h => /ฝ้าเพดาน/.test(h));
+  if(ceilingIdx === -1 && headers.length) ceilingIdx = headers.length - 1; // ปกติคอลัมน์นี้อยู่ขวาสุดของตารางเสมอ
+  console.log('[System parser] fireTestIdx=', fireTestIdx, 'ceilingIdx=', ceilingIdx, 'ceilingHeader=', JSON.stringify(headers[ceilingIdx]), 'headers.length=', headers.length);
   if(nameIdx === -1) nameIdx = 1; // เผื่อหัวคอลัมน์สะกดไม่ตรงเป๊ะ ให้ถือว่าคอลัมน์ถัดจาก "ลำดับที่" คือชื่อระบบ
   console.log('[System parser] headerRowIdx =', headerRowIdx, 'headers =', headers);
 
@@ -521,6 +522,10 @@ function buildSystemItems(rows){
     }
     if(nameVal === 'ระบบ') continue; // กันหัวตารางซ้ำกรณี nameIdx ตรงกับคำว่า "ระบบ" เป๊ะ
 
+    if(/VIP LINE STEEL 0\.4\s*$/.test(nameVal)){
+      console.log('[System parser] DEBUG row =', JSON.stringify(row));
+      console.log('[System parser] DEBUG row.length=', row.length, 'headers.length=', headers.length, 'ceilingIdx=', ceilingIdx, 'row[ceilingIdx]=', JSON.stringify(row[ceilingIdx]));
+    }
     const stcGroups = stcGroupsDef.map(g => ({
       label: g.label.trim(),
       value: (row[g.idx]||'').trim(),
