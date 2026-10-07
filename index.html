@@ -350,6 +350,18 @@ function findCol(headers, patterns, fallback){
 }
 
 function isUrl(v){ return /^https?:\/\//i.test((v||'').trim()); }
+function driveFileId(v){
+  const s = (v||'').trim();
+  let m;
+  if((m = s.match(/drive\.google\.com\/file\/d\/([^/?&]+)/))) return m[1];
+  if((m = s.match(/drive\.google\.com\/open\?[^#]*\bid=([^&]+)/))) return m[1];
+  if((m = s.match(/[?&]id=([^&]+)/))) return m[1];
+  return null;
+}
+function toDriveImageUrl(v){
+  const id = driveFileId(v);
+  return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w1000` : v;
+}
 function isImageUrl(v){
   const u = (v||'').trim();
   if(!isUrl(u)) return false;
@@ -413,7 +425,16 @@ function buildProducts(rows, sheetName){
     const mockupLabel = imgHeaderIdx > -1 ? headers[imgHeaderIdx].trim() : null;
     if(mockupLabel){
       const md = docs.find(d => d.label === mockupLabel);
-      if(md && isImageUrl(md.val)){ image = md.val; docs = docs.filter(d => d !== md); }
+      if(md && isUrl(md.val)){
+        if(isImageUrl(md.val)){
+          image = md.val;
+          docs = docs.filter(d => d !== md);
+        } else if(driveFileId(md.val)){
+          // ลิงก์ Google Drive แบบทั่วไป (เช่น .../file/d/XXX/view) -> แปลงเป็นลิงก์รูปที่ฝังแสดงได้จริงให้อัตโนมัติ
+          image = toDriveImageUrl(md.val);
+          docs = docs.filter(d => d !== md);
+        }
+      }
     }
     if(!image){
       const imgDoc = docs.find(d => isImageUrl(d.val));
